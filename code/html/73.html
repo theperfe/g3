@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<link rel=stylesheet href="../css/73.css"/>
+<script type="text/javascript" src="../scripts/d3.js"></script>
+<!--  <script src="http://d3js.org/d3.v3.min.js"></script>-->
+<!--<script src="../scripts/permutations.js"></script>-->
+<script src="../scripts/jquery.min.js"></script>
+<script src="../scripts/my_functions.js"></script>
+</head>
+<body>
+
+  <div id="left_panel">
+    <div id="rules_names_panel">
+      <h4> Rules </h4>
+    </div>
+    <div id="graphs_names_panel">
+      <h4> Graphs </h4>
+    </div>
+  </div>
+  <div id="central_panel">
+    <div id = "tabs_panel">
+    </div>
+    <div class="clear">
+    </div>
+    <div id = "rendering_panel">
+    </div>
+  </div>
+  <div id = "right_panel">
+    <div id = "node_types_panel">
+      <h4> Node Types </h4>
+    </div>
+    <div id = "link_types_panel">
+      <h4> Link Types </h4>
+    </div>
+  </div>
+  <div class = "clear">
+  </div>
+  <div id="buttons_panel" align="center">
+    <button id="save_data"> Save </button>
+    <button id="add_node_type"> Add node type </button>
+    <button id="add_link_type"> Add link type </button>
+    <button id="new_rule"> New rule </button>
+    <button id="new_graph"> New graph </button>
+    <button id="show_next_match"> Show next match </button>
+    <button id="replace"> Replace </button>
+    <button id="start_transformation"> Start Transformation </button>
+    <button id="stop_transformation"> Stop Transformation </button>
+  </div>
+
+  <script type="text/javascript">
+
+   jQuery.noConflict();
+
+/*************************************** VARIABLES *****************************************/
+
+    var generative_grammar_rules = [], graphs = [];/*{{{*/
+    var rules_names = [], graphs_names = [];
+    var current_graph = new Graph([],[]); //because the current graph in the rendering panel can either be main graph or the current rule graph
+    current_graph.index = {"name":"Main Graph", "Main Graph":0, "Rule Graph":0};
+    var current_rule_name = null, current_graph_name = null;
+
+    var all_graphs_obj = {"Main Graph": null, "Rule Graph": null};
+    var tabs = [];
+    for(var i in all_graphs_obj){ tabs.push(i);}
+    var current_tab = tabs[0];
+
+    var soft_buttons = ["Add mode", "Delete mode"];
+    var current_soft_button = soft_buttons[0];
+
+    var width = 700;
+    var height = 570;
+    var p = d3.scale.category20b();
+    var color_range = p.range();
+    var domain_list = [];
+    for(var i=65; i<123; i++){
+      domain_list.push(i.toString());	//we need to give the domain as a list of strings to ordinal scale !!
+    }
+    var color = d3.scale.ordinal().domain(domain_list).range(color_range);
+
+    var current_node_type = null;
+    var current_node_color = null;
+    var current_link_type = null;
+    var current_link_color = null;
+
+    var timer;
+
+    var match_object = {
+      "main_graph_index":null,
+      "rule_index": null,
+      "visited_paths": [],
+      "current_path": [],
+      "all_possible_paths": null
+    };
+//    var markers_list = ['in', 'sv', 'con', 'dis'];	//to store the list of all markers so that I dont add the same marker again
+
+    current_graph.svg_container = d3.select("#rendering_panel").append("svg");
+    current_graph.svg_container.append("defs");
+    var marker_container = current_graph.svg_container.select("defs");
+    marker_container
+	.selectAll(".end_arrow_marker")
+	.data(['end-arrow'])
+	.enter()
+        .append("marker")
+          .attr('id', 'end-arrow')
+	  .attr('class', 'end_arrow_marker')
+	  .attr('viewBox', '0 -5 10 10')
+	  .attr('refX',4)
+	  .attr('markerWidth', 4)
+	  .attr('markerHeight', 4)
+	  .attr('orient', 'auto')
+	.append("path")
+	  .attr('d', 'M0,-5L10,0L0,5')
+	  .attr('fill', '#000');
+
+/*************************************** MAIN CODE *****************************************/
+    d3.json("../json/73.json", function(error, dataset) {
+      dataset.graphs.forEach(function(element){graphs_names.push(element.name);});
+      graphs = dataset.graphs;
+      current_graph_name = dataset.graphs[0].name;
+      try{
+        generative_grammar_rules = dataset.generative_grammar_rules;
+        for(var i=0; i<generative_grammar_rules.length; i++){
+          rules_names.push(generative_grammar_rules[i].name);
+        }
+	current_rule_name = generative_grammar_rules[0].name || null;
+      }
+      catch(error){
+      }
+      markers_list = dataset.markers_list;
+      all_graphs_obj["Main Graph"] = graphs;
+      all_graphs_obj["Rule Graph"] = generative_grammar_rules;
+
+      current_graph.node = current_graph.svg_container.append("g").selectAll(".node");
+      current_graph.link = current_graph.svg_container.append("g").selectAll(".link");
+      current_graph.force = d3.layout.force()
+      				     .size([width, height])
+				     .charge(-300)
+				     .linkDistance(120);
+
+      current_node_type = graphs[0].node_types[0];
+      current_link_type = graphs[0].link_types[0];
+      initialize_graph(current_graph, graphs[0]);
+      current_graph.force.on("tick", function(){ current_graph.tick();});
+      current_graph.svg_container.on("click", function(){
+      					var this_event = this;
+					if(current_graph.index.name == "Main Graph") current_graph.add_node_in_main_graph(this_event);
+					else current_graph.add_node(this_event);});
+//      current_graph.restart();
+
+//Updating different panels
+      current_graph.update_node_types_panel();
+      current_graph.update_link_types_panel();
+      update_markers_panel();
+      update_rules_names_panel();
+      update_soft_buttons_panel();
+      update_graphs_names_panel();
+      update_tabs_panel();
+    });
+
+/*************************************** FUNCTIONS ****************************************
+* update markers panel
+* soft button constructor
+* graph constructor
+* key
+* initialize graph
+* extract_label //to extract labels from node definitions
+* find label color
+* add_node
+* delete_node
+* add_link
+* tick
+* node_click
+* update
+* enter
+* exit
+* update_node_types_panel
+* update_link_types_panel
+*/
+
+//update markers panel
+  function update_markers_panel(){
+    var mtype = marker_container
+	.selectAll(".link_label_marker")
+	.data(markers_list);
+
+	mtype
+	.enter()
+        .append("marker")
+          .attr('id', function(datum) {return datum;})
+	  .attr('class', 'link_label_marker')
+	  .attr('viewBox', '0 -40 50 50')
+	  .attr('refX',4)
+	  .attr('markerWidth', 10)
+	  .attr('markerHeight', 10)
+	  .attr('orient', 'auto')
+	.selectAll("text")
+	  .data(function(datum){return datum.split('_');})
+	  .enter()
+	  .append("text")
+	  .text(function(datum){return datum;})
+	  .attr("dy", function(datum, index){return -1*((index+1)*11);})
+	  .attr("fill", function(datum){return find_label_color(datum);});
+
+	mtype.exit().remove();
+}
+
+//soft button constructor
+  function Soft_button(){
+    this.active = false;
+  }
+
+//Tab constructor
+  function Tab(){
+    this.active = false;
+  }
+
+//Graph constructor
+
+  function Graph(nodes, links){  //Graph constructor
+    this.nodes = nodes;
+    this.links = links;
+    this.count = 0;
+    this.node_types = [];
+    this.link_types = [];
+  }
+
+    Graph.prototype.restart= restart;
+    Graph.prototype.update= update;
+    Graph.prototype.update_links= update_links;
+    Graph.prototype.update_nodes= update_nodes;
+    Graph.prototype.update_shapes= update_shapes;
+    Graph.prototype.update_labels= update_labels;
+    Graph.prototype.update_titles= update_titles;
+    Graph.prototype.enter= enter;
+    Graph.prototype.enter_links= enter_links;
+    Graph.prototype.enter_nodes= enter_nodes;
+    Graph.prototype.exit= exit;
+    Graph.prototype.exit_links= exit_links;
+    Graph.prototype.exit_nodes= exit_nodes;
+    Graph.prototype.key= key;
+    Graph.prototype.add_node= add_node;
+    Graph.prototype.add_node_in_main_graph= add_node_in_main_graph;
+    Graph.prototype.add_link_in_main_graph= add_link_in_main_graph;
+    Graph.prototype.delete_node= delete_node;
+    Graph.prototype.delete_node_type= delete_node_type;
+    Graph.prototype.delete_link_type= delete_link_type;
+    Graph.prototype.update_node_types_panel= update_node_types_panel;
+    Graph.prototype.update_link_types_panel= update_link_types_panel;
+    Graph.prototype.delete_link= delete_link;
+    Graph.prototype.add_link= add_link;
+    Graph.prototype.tick= tick;
+    Graph.prototype.node_click= node_click;
+    Graph.prototype.link_click= link_click;
+
+//key function      
+    function key(datum) {
+      return datum.key;
+    }
+
+//initialize graph
+    function initialize_graph(graph1, graph2){
+	graph1.nodes = graph2.nodes;
+	graph1.links = graph2.links;
+	graph1.node_types = graph2.node_types; 
+	graph1.link_types = graph2.link_types; 
+	graph1.force.nodes(graph1.nodes)
+	    			.links(graph1.links)
+				.start();
+	    
+	graph1.nodes = graph1.force.nodes();
+	graph1.links = graph1.force.links();
+        graph1.force.on("tick", function(){ graph1.tick();});
+        graph1.svg_container.on("click", function(){
+      					var this_event = this;
+					if(graph1.index.name == "Main Graph") graph1.add_node_in_main_graph(this_event);
+					else graph1.add_node(this_event);});
+	graph1.restart();
+    }
+
+//extract label
+    function extract_label(definition){
+      var label_text = '';
+      var label_prefix = '';
+      switch(true){
+      case (definition.slice(0,5) == 'new::'):
+        label_text = definition.slice(10);
+	break;
+      case (definition.slice(0,5) == 'del::'):
+        label_text = definition.slice(10);
+	break;
+      case (definition.slice(0,5) == 'not::'):
+        label_text = definition.slice(10);
+	break;
+      case (definition.slice(0,5) == 'type:'):
+        label_text = definition.slice(5);
+	break;
+      case (definition.slice(0,4) == 'new:'):
+        label_text = definition.slice(9);
+        label_prefix = '+';
+        break;
+      case (definition.slice(0,4) == 'del:'):
+        label_text = definition.slice(9);
+        label_prefix = '-';
+        break;
+      case (definition.slice(0,4) == 'not:'):
+        label_text = definition.slice(9);
+        label_prefix = '!';
+        break;
+      }
+      return label_text;
+    }
+
+//find label color
+    function find_label_color(label){
+      if(label[0] == '+') return 'green';
+      else if(label[0] == '-') return 'blue';
+      else if(label[0] == '!') return 'red';
+      else return 'black';
+    }
+
+//add node
+//add a node by clicking anywhere on the svg canvas. While adding the key to the node, find the max. key existing till then, and add the next no. as the key to the incoming node.
+    function add_node(this_event){
+      d3.event.stopPropagation();
+      var label = null;
+      var point = d3.mouse(this_event);
+      var prefixes_map = {'new:':{'symbol':'+', 'color':'green'}, 'del:':{'symbol':'-', 'color':'blue'}, 'not:':{'symbol':'!', 'color':'red'}};
+      var labels_arr = [];
+      var node_width = 18, node_height = 18;
+      var current_node_color = 'black';
+      var possible_new_node_types = [];
+      var definition = prompt("Please specify the definition of this node");
+      if(definition === false) return;
+      while(definition === "") definition = prompt("The definition cannot be empty. Please specify a proper definition of this node");
+      if(definition.slice(0,5) == 'new::' ||definition.slice(0,5) == 'del::' ||definition.slice(0,5) == 'not::'){
+        if(definition.indexOf(';') != -1){alert("Error in definition. Try again."); return;}
+	else {
+	  labels_arr.push({'text':extract_label(definition)});
+	  possible_new_node_types.push(extract_label(definition));
+	  label = extract_label(definition);
+	  if(definition.slice(0,5) == 'new::') {
+	    current_node_color = "green";
+	    labels_arr[0].color = "green";
+	  }
+	  else if(definition.slice(0,5) == 'del::') {
+	    current_node_color = "blue";
+	    labels_arr[0].color = "blue";
+	  }
+	  else if(definition.slice(0,5) == 'not::') {
+	    current_node_color = "red";
+	    labels_arr[0].color = "red";
+	  }
+	}
+      }
+      else if(definition.slice(0,5) == 'type:') {
+        if(definition.indexOf(';') != -1){alert("Error in definition. Try again."); return;}
+        else {
+	  labels_arr.push({'text':extract_label(definition), 'color':'black'});
+	  possible_new_node_types.push(extract_label(definition));
+	  label = extract_label(definition);
+	}
+      }
+      else if(definition.slice(0,4) == 'new:' ||definition.slice(0,4) == 'del:' ||definition.slice(0,4) == 'not:'){
+        var definition_arr = definition.split(';');
+	definition_arr.forEach(function(element){
+	  possible_new_node_types.push(extract_label(element));
+	  if(element.slice(0,4) == 'del:') label = extract_label(element);
+	  labels_arr.push({'text':prefixes_map[element.slice(0,4)].symbol + extract_label(element), 'color':prefixes_map[element.slice(0,4)].color});
+	});
+      }
+      else {alert("Error in definition. Try again."); return;}
+      possible_new_node_types.forEach(function(element){
+        if(current_graph.node_types.indexOf(element) == -1) {
+	  current_graph.node_types.push(element);
+	  current_graph.update_node_types_panel();
+	}
+      });
+      if(labels_arr.length){
+        node_width = (d3.max(labels_arr, function(datum){return datum.text.length;})+1)*10 + 4;
+	node_height = labels_arr.length*15;
+      }
+      var new_key = d3.max(this.nodes, function(datum){return datum.key}) + 1; //find the max. key and add 1 to it
+      if(!new_key) new_key = 0;
+      var node_item = {key:new_key,x:point[0],y:point[1],visible_label:labels_arr,label: label, color:current_node_color, width: node_width, height: node_height, definition: definition};
+      this.nodes.push(node_item);
+      this.restart();
+    }
+
+
+    function add_node_in_main_graph(this_event) {
+      d3.event.stopPropagation();
+      var point = d3.mouse(this_event);
+      if(this.node_types.length == 0){
+        alert("You should add at least one node type before adding a node in the graph");
+	return;
+      }
+      var new_key = d3.max(this.nodes, function(datum){return datum.key}) + 1; //find the max. key and add 1 to it
+      if(!new_key) new_key = 0;
+      var node_width = 18, node_height = 18;
+      if(current_node_type != '') {
+        node_width = current_node_type.length*10 + 8;
+	current_node_color = color(current_node_type.charCodeAt(0));
+      }
+      var node_item = {key:new_key,x:point[0],y:point[1],visible_label:[{'text':current_node_type,'color':'black'}],label: current_node_type, color:current_node_color, width: node_width, height: node_height};
+      this.nodes.push(node_item);
+      this.restart();
+    }
+
+//delete node
+    function delete_node(d,i){
+      d3.event.stopPropagation();
+      var indices_to_be_deleted = [];
+      for(var j=0; j<this.links.length; j++){  //creating the list of indices of links to be deleted
+        if((this.links[j].source.index == i) || (this.links[j].target.index == i)){
+          indices_to_be_deleted.push(j);
+        }
+      }
+      indices_to_be_deleted.reverse();  //reversing the indices so that the largest index comes first. This is necessary since if we delete the smallest index of links first, then all the remaining links indices will change as well.
+      for(var j=0; j<indices_to_be_deleted.length; j++){
+        this.links.splice(indices_to_be_deleted[j],1)  //delete one element i.e. at the index j
+      }
+      //then delete the node itself
+      this.nodes.splice(i,1);  //delete one node i.e. at the index i.
+      this.restart();
+      this.restart();
+    }
+
+//add link
+//add a link by clicking on the source node and the target node
+    function add_link(d,i){
+      d3.event.stopPropagation();
+      if(this.count == 1)  { //clicked on target 
+	var prefixes_map = {'new:':{'symbol':'+', 'color':'green'}, 'del:':{'symbol':'-', 'color':'blue'}, 'not:':{'symbol':'!', 'color':'red'}};
+	var label = null;
+	var labels_arr = [], marker_id = '';
+	var current_link_color = 'black';
+	var possible_new_link_types = [];
+	var definition = prompt("Please specify the definition of this link");
+	if(definition === false) return;
+	while(definition === "") definition = prompt("The definition cannot be empty. Please specify a proper definition of this link");
+	if(definition.slice(0,5) == 'new::' ||definition.slice(0,5) == 'del::' ||definition.slice(0,5) == 'not::'){
+	  if(definition.indexOf(';') != -1){alert("Error in definition. Try again."); return;}
+	  else {
+	    labels_arr.push({'text':extract_label(definition)});
+	    possible_new_link_types.push(extract_label(definition));
+	    label = extract_label(definition);
+	    if(definition.slice(0,5) == 'new::') {
+	      current_link_color = "green";
+	      labels_arr[0].color = "green";
+	    }
+	    else if(definition.slice(0,5) == 'del::') {
+	      current_link_color = "blue";
+	      labels_arr[0].color = "blue";
+	    }
+	    else if(definition.slice(0,5) == 'not::') {
+	      current_link_color = "red";
+	      labels_arr[0].color = "red";
+	    }
+	  }
+	}
+	else if(definition.slice(0,5) == 'type:') {
+	  if(definition.indexOf(';') != -1){alert("Error in definition. Try again."); return;}
+	  else {
+	    labels_arr.push({'text':extract_label(definition), 'color':'black'});
+	    possible_new_link_types.push(extract_label(definition));
+	    label = extract_label(definition);
+	  }
+	}
+	else if(definition.slice(0,4) == 'new:' ||definition.slice(0,4) == 'del:' ||definition.slice(0,4) == 'not:'){
+	  var definition_arr = definition.split(';');
+	  definition_arr.forEach(function(element){
+	    possible_new_link_types.push(extract_label(element));
+	    if(element.slice(0,4) == 'del:') label = extract_label(element);
+	    labels_arr.push({'text':prefixes_map[element.slice(0,4)].symbol + extract_label(element), 'color':prefixes_map[element.slice(0,4)].color});
+	  });
+	}
+	else {this.count = 0; alert("Error in definition. Try again."); return;}
+	possible_new_link_types.forEach(function(element){
+	  if(current_graph.link_types.indexOf(element) == -1) {
+	    current_graph.link_types.push(element);
+	    current_graph.update_link_types_panel();
+	  }
+	});
+
+	labels_arr.forEach(function(element){
+	  if(marker_id == '') marker_id = marker_id + element.text;
+	  else marker_id = marker_id + '_' + element.text;
+	});
+	if(markers_list.indexOf(marker_id) == -1){
+	markers_list.push(marker_id);
+	update_markers_panel();
+	}
+	 
+        this.target = i;
+        this.target_key = this.nodes[i].key;  //I had to do this.target_key (not just target_key) because once it leaves this loop, the target_key should still be stored, but I dont want it to be a global variable.
+        if (this.source !== this.target){
+          var new_key = this.source_key + "-" + this.target_key + "_" + definition; //the link key is depending on its source key and target key
+	  var check = false;		
+	  this.links.forEach(function(link){
+	    if(link.key == new_key) check = true;}); 
+	  if(check === true){
+	    this.count = 0;
+	    alert("An identical link already exists between these two nodes.");
+	  }
+	  else{
+	    var link_item = {key:new_key, source:this.source, target:this.target, definition: definition, visible_label: labels_arr, label: label, color: current_link_color, marker_id: marker_id};
+            this.links.push(link_item);
+            this.count = 0;
+            this.restart();
+	  }
+        }
+      }
+      else if (this.count == 0){  //clicked on source
+        this.source = i;
+        this.source_key = this.nodes[i].key;
+        this.count = 1;
+      }
+    }
+
+//add link in main graph
+    function add_link_in_main_graph(d,i){		
+      d3.event.stopPropagation();
+      if(this.count == 1)  { //clicked on target 
+        if(this.link_types.length == 0){
+          alert("You should add at least one link type before adding a link in the graph");
+	  return;
+        }
+        var marker_id = '';
+	var labels_arr = [{'text':current_link_type,'color':'black'}];
+	marker_id = current_link_type;
+	if(markers_list.indexOf(marker_id) == -1){
+	markers_list.push(marker_id);
+	update_markers_panel();
+        }
+        this.target = i;
+        this.target_key = this.nodes[i].key;  //I had to do this.target_key (not just target_key) because once it leaves this loop, the target_key should still be stored, but I dont want it to be a global variable.
+        if (this.source !== this.target){
+          var new_key = this.source_key + "-" + this.target_key + "_" + current_link_type; //the link key is depending on its source key and target key
+	  var check = false;		
+	  current_link_color = color(current_link_type.charCodeAt(0));
+	  this.links.forEach(function(link){
+	    if(link.key == new_key) check = true;}); 
+	  if(check === true){
+	    this.count = 0;
+	    alert("An identical link already exists between these two nodes.");
+	  }
+	  else{
+	    var link_item = {key:new_key, source:this.source, target:this.target, visible_label:labels_arr, label: current_link_type, color: current_link_color, marker_id: marker_id};
+            this.links.push(link_item);
+            this.count = 0;
+            this.restart();
+	  }
+        }
+      }
+      else if (this.count == 0){  //clicked on source
+        this.source = i;
+        this.source_key = this.nodes[i].key;
+        this.count = 1;
+      }
+    }
+    
+//delete link
+    function delete_link(d,i){
+      d3.event.stopPropagation();
+      this.links.splice(i,1);
+      this.restart();
+    }
+
+//tick
+    function tick() {
+      this.link.attr('d', function(d) {
+		    var deltaX = d.target.x - d.source.x,
+		    deltaY = d.target.y - d.source.y,
+		    dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY),
+		    normX = deltaX / dist,
+		    normY = deltaY / dist,
+		    sourceXPadding = d.source.width/2 ,
+		    sourceYPadding = d.source.height/2 ,
+		    targetXPadding = d.target.width/2 + 6,
+		    targetYPadding = d.target.height/2 + 6,
+		    sourceX = d.source.x + d.source.width/2 + (sourceXPadding * normX),
+		    sourceY = d.source.y + d.source.height/2 + (sourceYPadding * normY),
+		    targetX = d.target.x + d.target.width/2 - (targetXPadding * normX),
+		    targetY = d.target.y + d.target.height/2 - (targetYPadding * normY);
+		    return 'M' + sourceX + ',' + sourceY + 'L' + (targetX+sourceX)/2 + ',' + (targetY+sourceY)/2 + 'L' + targetX + ',' + targetY;
+//		    return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
+//		    return 'M' + sourceX + ',' + sourceY + 'A' + dist + ',' + dist + ' 0 0,1 ' + targetX + ',' + targetY;
+      });
+      this.node.attr("transform", function(datum){return "translate("+datum.x+","+datum.y+")"});
+    }
+
+//node click
+    function node_click(d,i){
+      if (current_soft_button === "Delete mode") this.delete_node(d,i);
+      else {
+       if(this.index.name == "Main Graph") this.add_link_in_main_graph(d,i);
+       else this.add_link(d,i);
+      }
+      this.restart();
+    }
+
+//link click
+    function link_click(d,i){
+      d3.event.stopPropagation();
+      if(current_soft_button === "Delete mode") this.delete_link(d,i);
+      this.restart();
+    }
+
+/****** update *********/
+    function update(){
+      this.update_links();
+      this.update_nodes();
+    }
+
+//update_links
+    function update_links(){
+      var graph = this;
+      this.link = this.link.data(this.links, this.key)
+       .classed("matched", function(datum){
+	  var arr = datum.key.split('_');
+	  var keys = arr[0].split('-');
+          var source = keys[0];
+          var target = keys[1];
+          var source_output = match_object.current_path.filter(function(el){return el.key == source;})
+          var target_output = match_object.current_path.filter(function(el){return el.key == target;})
+	  if(source_output.length && target_output.length){
+	    var source_index = source_output[0].rule_index;
+	    var target_index = target_output[0].rule_index;
+	    var index = match_object.rule_index;
+	    var output = generative_grammar_rules[index].links.filter(function(el){
+	      if(typeof el.source == "object") return (el.source.index == source_index && el.target.index == target_index && el.label == datum.label);
+	      else return (el.source == source_index && el.target == target_index && el.label == datum.label);
+	    });
+	    if(output.length) return true;
+	    else return false;
+	  }
+	  else return false;
+        })
+     .on("click", function(datum, index){
+        graph.link_click(datum, index);});
+    }
+
+//update_nodes
+    function update_nodes(){
+      this.node = this.node.data(this.nodes, this.key);
+      this.update_shapes();
+      this.update_labels();
+      this.update_titles();
+    }
+
+//update_shapes
+    function update_shapes(){
+      var graph = this;
+      var node_shapes = this.svg_container.selectAll("g .node_shape").data(this.nodes, this.key);
+      node_shapes
+//      .attr("fill", function(datum){return datum.color;})
+      .attr("fill", "white")
+      .classed("matched", function(datum){
+        var output = match_object.current_path.filter(function(el){return el.key == datum.key});
+	if(output.length == 0) return false;
+	else return true;
+       })
+      .attr("width", function(datum){return datum.width;})
+      .attr("height", function(datum){return datum.height;})
+      .style("stroke", function(d){ return d.color})
+      .on("click", function(datum, index){
+        graph.node_click(datum, index);});
+    }
+
+//update_labels 
+    function update_labels(){	
+      var gnode_text = this.svg_container.selectAll(".node").data(this.nodes, this.key)
+                        .selectAll("text.node_label").data(function(datum){return datum.visible_label;});
+
+			gnode_text
+			.text(function(datum){return datum.text;})
+			.attr("fill", function(datum){return datum.color;});
+
+			   gnode_text
+			   .enter()
+			   .append("text")
+			   .attr("class", "node_label")
+			   .attr("font-family", "calibri")
+			   .attr("font-size", 13)
+			   .attr("font-weight", "bold")
+			   .attr("dx", 4)
+			   .attr("dy", function(datum, index){return (index+1)*12 + 2;})
+			   .text(function(datum){return datum.text;})
+			   .style("pointer-events", "none")
+			   .attr("fill", function(datum){return datum.color;});
+
+			gnode_text.exit().remove();
+    }
+
+//update_titles
+    function update_titles(){
+      var node_titles = this.svg_container.selectAll("g .node_title").data(this.nodes, this.key);
+      node_titles
+      .text(function(d,i) {return i});
+    }
+
+      
+/****** enter *********/
+    function enter(){
+      this.enter_links();
+      this.enter_nodes();
+    }
+
+//enter_links
+    function enter_links(){
+      var graph = this;
+      this.link.enter().append("path")
+      .attr("class", "link")
+      .classed("matched", function(datum){
+	var arr = datum.key.split('_');
+	var keys = arr[0].split('-');
+        var source = keys[0];
+        var target = keys[1];
+        var source_output = match_object.current_path.filter(function(el){return el.key == source;});
+        var target_output = match_object.current_path.filter(function(el){return el.key == target;});
+	if(source_output.length && target_output.length){
+	  var source_index = source_output[0].rule_index;
+	  var target_index = target_output[0].rule_index;
+	  var index = match_object.rule_index;
+	  var output = generative_grammar_rules[index].links.filter(function(el){
+	    if(typeof el.source == "object") return (el.source.index == source_index && el.target.index == target_index && el.label == datum.label);
+	    else return (el.source == source_index && el.target == target_index && el.label == datum.label);
+	  });
+	  if(output.length) return true;
+	  else return false;
+	}
+	else return false;
+      })
+      .attr("stroke", function(datum){return datum.color;})
+      .style('marker-mid', function(datum){
+        return "url(#" + datum.marker_id + ")";
+      })
+      .style('marker-end', function(d){return 'url(#end-arrow)';})
+      .on("click", function(datum, index){
+        graph.link_click(datum, index);});
+    }
+
+//enter_nodes 
+    function enter_nodes(){
+      var graph = this;
+      var gnode = this.node.enter().append("g")
+        .attr("class", "node");
+      gnode.append("rect")
+      .attr("class", "node_shape")
+      .classed("matched", function(datum){
+        var output = match_object.current_path.filter(function(el){return el.key == datum.key});
+	if(output.length == 0) return false;
+	else return true;
+       })
+      .attr("width", function(d){return d.width;})
+      .attr("height", function(d){return d.height;})
+//      .attr("fill", function(datum){return datum.color;})
+      .attr("fill", "white")
+      .style("stroke", function(d){ return d.color})
+      .on("click", function(datum, index){
+        graph.node_click(datum, index);})
+      .call(graph.force.drag);
+
+      var gnode_text = gnode.selectAll("text.node_label")
+           .data(function(datum){return datum.visible_label;}); //it's actually the labels arr, not a single label
+
+	   gnode_text
+	   .text(function(datum){return datum.text;})
+	   .attr("fill", function(datum){return datum.color;});
+
+	   gnode_text
+	   .enter()
+	   .append("text")
+	   .attr("class", "node_label")
+           .attr("font-family", "calibri")
+           .attr("font-size", 13)
+           .attr("font-weight", "bold")
+	   .attr("dx", 4)
+	   .attr("dy", function(datum, index){return (index+1)*12 + 2;})
+	   .text(function(datum){return datum.text;})
+	   .style("pointer-events", "none")
+	   .attr("fill", function(datum){return datum.color;});
+
+	   gnode_text
+           .exit().remove();
+
+      gnode.append("title")
+      .attr("class", "node_title")
+      .text(function(d,i) {return i});
+    }
+
+/****** exit *********/
+    function exit(){
+      this.exit_links();
+      this.exit_nodes();
+    }
+
+//exit_links
+    function exit_links(){
+      this.link.exit().remove();
+    }
+
+//exit_nodes
+    function exit_nodes(){
+      this.node.exit().remove();
+    }
+      
+/****** restart *********/
+    function restart()
+    {
+      this.update();
+      this.enter();
+      this.exit();
+      this.force.start();
+    }
+
+
+/****** update node types panel *********/
+    function update_node_types_panel(){
+      var graph = this;
+      var ntypes = d3.select("#node_types_panel").selectAll("p").data(this.node_types);
+    //update existing node types
+      ntypes.classed('selected', function(datum) {return datum === current_node_type;})
+      .text(function(datum,index){
+        return datum;
+      });
+    //add new node types
+      ntypes.enter()
+      .append("p")
+      .classed('selected', function(datum) {return datum === current_node_type;})
+      .text(function(datum,index){
+        return datum;
+      })
+      .on("click", function(datum,index){
+        if (current_soft_button === "Delete mode") graph.delete_node_type(datum, index);
+	else{
+          current_node_type = datum;
+	  console.log(datum.charCodeAt(0));
+	  console.log(color(datum.charCodeAt(0)));
+          current_node_color = color(datum.charCodeAt(0));
+	  graph.update_node_types_panel();
+	}
+      });
+      //exit node types
+      ntypes.exit().remove();
+    }
+
+//delete node type
+    function delete_node_type(datum, index){
+      var check = function(){
+          for(var j in this.nodes){
+	    if(datum === this.nodes[j].label) return true;
+  	  }
+        return false;
+      }
+      if(check() === false){
+        this.node_types.splice(index, 1);
+	this.update_node_types_panel();
+      }
+      else{
+        var answer = confirm("There are nodes based on this node type. If you delete this node type, all those nodes will be deleted. Would you like to continue?");
+	if(answer === true){
+            for(var j in this.nodes){
+	      if(datum === this.nodes[j].label){
+	        this.delete_node(this.nodes[j],j);
+		console.log(j);
+	      }
+  	    }
+	  this.restart();
+	  this.node_types.splice(index,1);
+	  this.update_node_types_panel();
+        }
+      }
+    }
+
+/****** update link types panel *********/
+    function update_link_types_panel(){
+      var graph = this;
+      var ltypes = d3.select("#link_types_panel").selectAll("p").data(this.link_types);
+    //update existing link types
+      ltypes.classed('selected', function(datum) {return datum === current_link_type;})
+      .text(function(datum,index){
+        return datum;
+      });
+    //add new link types
+      ltypes.enter()
+      .append("p")
+      .classed('selected', function(datum) {return datum === current_link_type;})
+      .text(function(datum,index){
+        return datum;
+      })
+      .on("click", function(datum,index){
+        if (current_soft_button === "Delete mode") graph.delete_link_type(datum, index);
+	else{
+          current_link_type = datum;
+          current_link_color = color(current_link_type.charCodeAt(0));
+	  graph.update_link_types_panel();
+	}
+      });
+      //exit link types
+      ltypes.exit().remove();
+    }
+
+//delete link type
+    function delete_link_type(datum, index){
+      var check = function(){
+          for(var j in this.links){
+	    if(datum === this.links[j].label) return true;
+  	  }
+        return false;
+      }
+      if(check() === false){
+        this.link_types.splice(index, 1);
+	this.update_link_types_panel();
+      }
+      else{
+        var answer = confirm("There are links based on this link type. If you delete this link type, all those links will be deleted. Would you like to continue?");
+	if(answer === true){
+            for(var j in this.links){
+	      if(datum === this.links[j].label){
+	        this.delete_node(this.links[j],j);
+		console.log(j);
+	      }
+  	    }
+	  this.restart();
+	  this.link_types.splice(index,1);
+	  this.update_link_types_panel();
+        }
+      }
+    }
+
+/****** update rules names panel *********/
+    function update_rules_names_panel(){
+      var rnames = d3.select("#rules_names_panel").selectAll("p").data(rules_names);
+      //update rules names
+      rnames
+      .classed('selected', function(datum){return datum === current_rule_name;})
+      .classed('matched', function(datum, index){return index === match_object.rule_index;})
+      .text(function(datum){return datum});
+      //add new rules names
+      rnames.enter()
+      .append("p")
+      .classed('selected', function(datum){return datum === current_rule_name;})
+      .classed('matched', function(datum, index){return index === match_object.rule_index;})
+      .text(function(datum){return datum})
+      .on("click", function(datum, index){
+        if(current_soft_button === "Delete mode") delete_rule_name(datum, index);
+	else{
+	  current_tab = "Rule Graph";
+	  update_tabs_panel();
+          current_rule_name = datum;
+	  current_graph.index.name = "Rule Graph";
+	  current_graph.index[current_graph.index.name] = index;
+	  initialize_graph(current_graph, generative_grammar_rules[index]);
+//	  current_graph.restart();
+	  update_rules_names_panel();
+	  current_graph.update_node_types_panel();
+	  current_graph.update_link_types_panel();
+	}
+      });
+      //exit rules names
+      rnames.exit().remove();
+    }
+
+//delete rule name
+    function delete_rule_name(datum, index){
+      rules_names.splice(index,1);
+      generative_grammar_rules.splice(index,1);
+      update_rules_names_panel();
+    }
+
+/****** update graphs names panel *********/
+    function update_graphs_names_panel(){
+      var gnames = d3.select("#graphs_names_panel").selectAll("p").data(graphs_names);
+      //update rules names
+      gnames.classed('selected', function(datum){return datum === current_graph_name;})
+      .text(function(datum){return datum});
+      //add new rules names
+      gnames.enter()
+      .append("p")
+      .classed('selected', function(datum){return datum === current_graph_name;})
+      .text(function(datum){return datum})
+      .on("click", function(datum, index){
+        if(current_soft_button === "Delete mode") delete_graph_name(datum, index);
+	else{
+	  current_tab = "Main Graph";
+	  update_tabs_panel();
+          current_graph_name = datum;
+	  current_graph.index.name = "Main Graph";
+	  current_graph.index[current_graph.index.name] = index;
+	  initialize_graph(current_graph, graphs[index]);
+//	  current_graph.restart();
+	  update_graphs_names_panel();
+	  current_graph.update_node_types_panel();
+	  current_graph.update_link_types_panel();
+	}
+      });
+      //exit rules names
+      gnames.exit().remove();
+    }
+
+//delete graph name
+    function delete_graph_name(datum, index){
+      graphs_names.splice(index,1);
+      graphs.splice(index,1);
+      update_graphs_names_panel();
+    }
+
+/************** update soft buttons panel **************/
+    function update_soft_buttons_panel(){
+      var snames = d3.select("#buttons_panel").selectAll(".soft_button").data(soft_buttons);
+      //update soft_buttons panel
+        snames.classed("selected_soft_button", function(datum){return current_soft_button === datum;})
+	.text(function(datum){return datum;});
+      //add soft_buttons
+        snames.enter()
+	.append("div")
+	.attr("class", "soft_button")
+	.classed("selected_soft_button", function(datum){return current_soft_button === datum;})
+	.attr("id", function(datum) {return datum;})
+	.text(function(datum){return datum;})
+	.on("click", function(datum){
+	  current_soft_button = datum;
+	  update_soft_buttons_panel();
+	});
+      //remove soft_buttons
+        snames.exit().remove();
+    }
+
+/************** update tabs panel **************/
+    function update_tabs_panel(){
+      var tnames = d3.select("#tabs_panel").selectAll(".tab").data(tabs);
+      //update tabs panel
+        tnames.classed("selected_tab", function(datum){return current_tab === datum;})
+	.text(function(datum){return datum;});
+      //add tabs
+        tnames.enter()
+	.append("div")
+	.attr("class", "tab")
+	.classed("selected_tab", function(datum){return current_tab === datum;})
+	.attr("id", function(datum) {return datum;})
+	.text(function(datum){return datum;})
+	.on("click", function(datum, index){
+	  current_tab = datum;
+	  current_graph.index.name = datum;
+	  initialize_graph(current_graph, all_graphs_obj[datum][current_graph.index[datum]]);
+	  update_tabs_panel();
+	  current_graph.update_node_types_panel();
+	  current_graph.update_link_types_panel();
+	});
+      //remove tabs
+        tnames.exit().remove();
+    }
+
+/************ replace ****************/
+//replace update links
+    function replace_update_links(){
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+      var links_to_be_updated = lhs.links.filter(function(element){
+        return element.definition.indexOf('new:type:') != -1 && element.definition.indexOf('del:type:') != -1;
+      });
+      links_to_be_updated.forEach(function(element){
+        var matching_nodes = match_object.current_path.filter(function(local_element){
+	  return local_element.rule_index == (typeof element.source == "object" ? element.source.index : element.source);
+	});
+	var source_key = matching_nodes[0].key;
+        matching_nodes = match_object.current_path.filter(function(local_element){
+	  return local_element.rule_index == (typeof element.target == "object" ? element.target.index : element.target);
+	});
+	var target_key = matching_nodes[0].key;
+	var matching_links = mg.links.filter(function(local_element){
+	  return local_element.source.key == source_key && local_element.target.key == target_key && local_element.label == element.label;
+	});
+	var arr = element.definition.split(';');
+	for(var i=0; i<arr.length; i++){
+	  if(arr[i].slice(0,4) ==  'new:') var new_label = extract_label(arr[i]);
+	}
+	matching_links[0].label = new_label;
+	matching_links[0].marker_id = new_label;
+	matching_links[0].visible_label[0].text = new_label;
+	matching_links[0].color = color(new_label.charCodeAt(0));
+//	console.log(JSON.stringify(matching_links[0]));
+//	console.log(JSON.stringify(mg.links));
+      });
+    }
+
+    function replace_update_nodes(){
+      var arr = [], new_label = "", node_width = 18, lhs_node = null, mg_node = null;
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+      match_object.current_path.forEach(function(element){
+        lhs_node = lhs.nodes[element.rule_index];
+	mg_node = mg.nodes.filter(function(local_element){return local_element.key == element.key})[0];
+	if(lhs_node.definition.indexOf('new:type:') != -1 && lhs_node.definition.indexOf('del:type:') != -1){
+	  arr = lhs_node.definition.split(';');
+	  for(var i=0; i<arr.length; i++){
+	    if(arr[i].slice(0,4) == 'new:') new_label = extract_label(arr[i]);
+	  }
+//	  console.log(new_label);
+	  mg_node.node_width = new_label.length*10 + 8;
+	  mg_node.label = new_label;
+	  mg_node.visible_label[0].text = new_label;
+	  mg_node.color = color(new_label.charCodeAt(0));
+	}
+      });
+    }
+
+    function replace_add_nodes(){
+      var new_key = null, main_graph_node_item = {}, match_object_node_item = {}, node_width = 18, node_height = 18, current_node_type = null, visible_label = [];
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+//      var current_node_color = 'black';
+      var nodes_to_be_added = lhs.nodes.filter(function(element){
+	return element.definition.slice(0,5) == 'new::';
+      });
+      nodes_to_be_added.forEach(function(element){
+      visible_label = [];
+      current_node_type = element.label;
+      current_node_color = color(current_node_type.charCodeAt(0));
+      new_key = d3.max(mg.nodes, function(datum){return datum.key}) + 1; //find the max. key and add 1 to it
+      if(!new_key) new_key = 0;
+      if(current_node_type != '') node_width = current_node_type.length*10 + 8;
+      visible_label.push({'text':current_node_type, 'color':'black'});
+      main_graph_node_item = {key: new_key, visible_label: visible_label, label: current_node_type, color: current_node_color, width: node_width, height: node_height};
+      mg.nodes.push(main_graph_node_item);
+      match_object_node_item = {key: new_key, visible_label: visible_label, label: current_node_type, color: current_node_color, width: node_width, height: node_height};
+      match_object_node_item.rule_index = generative_grammar_rules[match_object.rule_index].nodes.indexOf(element);
+      match_object.current_path.push(match_object_node_item);
+      });
+    }
+
+    function replace_add_links(){
+      var match_object_nodes = [], main_graph_nodes = [], new_key = null, source_key = null, source_index = null, target_key = null, target_index = null, current_link_type = null, link_item = {};
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+//      var current_link_color = 'black';
+      var links_to_be_added = lhs.links.filter(function(element){
+	return element.definition.slice(0,5) == 'new::';
+      });
+      links_to_be_added.forEach(function(element){
+        match_object_nodes = match_object.current_path.filter(function(local_element){
+//	  console.log(JSON.stringify(local_element));
+//	  console.log(JSON.stringify(element.source));
+	  return local_element.rule_index == (typeof element.source == "object" ? element.source.index : element.source);
+	});
+//	console.log(JSON.stringify(match_object.current_path));
+	main_graph_nodes = mg.nodes.filter(function(local_element){
+	  return local_element.key == match_object_nodes[0].key;
+	});
+	source_key = main_graph_nodes[0].key;
+	source_index = mg.nodes.indexOf(mg.nodes.filter(function(local_element){
+	  return local_element.key == source_key;
+	})[0]);
+
+        match_object_nodes = match_object.current_path.filter(function(local_element){
+	  return local_element.rule_index == (typeof element.target == "object" ? element.target.index : element.target);
+	});
+	main_graph_nodes = mg.nodes.filter(function(local_element){
+	  return local_element.key == match_object_nodes[0].key;
+	});
+	target_key = main_graph_nodes[0].key;
+	target_index = mg.nodes.indexOf(mg.nodes.filter(function(local_element){
+	  return local_element.key == target_key;
+	})[0]);
+	current_link_type = element.label;
+	current_link_color = color(current_link_type.charCodeAt(0));
+	new_key = source_key + '-' + target_key + '_' + current_link_type;
+	link_item = {key: new_key, source: source_index, target: target_index, visible_label: [{'text':current_link_type, 'color':'black'}], label: current_link_type, color: current_link_color, marker_id: current_link_type};
+	mg.links.push(link_item);
+ 
+      });
+    }
+
+    function replace_delete_links(){
+      var match_object_nodes = [], main_graph_nodes = [], new_key = null, source_key = null, source_index = null, target_key = null, target_index = null, current_link_type = null, main_graph_link_index = null;
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+//      var current_link_color = 'black';
+      var links_to_be_deleted = lhs.links.filter(function(element){
+	return element.definition.slice(0,5) == 'del::';
+      });
+      links_to_be_deleted.forEach(function(element){
+        match_object_nodes = match_object.current_path.filter(function(local_element){
+//	  console.log(JSON.stringify(local_element));
+//	  console.log(JSON.stringify(element.source));
+	  return local_element.rule_index == (typeof element.source == "object" ? element.source.index : element.source);
+	});
+//	console.log(JSON.stringify(match_object.current_path));
+	main_graph_nodes = mg.nodes.filter(function(local_element){
+	  return local_element.key == match_object_nodes[0].key;
+	});
+	source_key = main_graph_nodes[0].key;
+	source_index = mg.nodes.indexOf(mg.nodes.filter(function(local_element){
+	  return local_element.key == source_key;
+	})[0]);
+
+        match_object_nodes = match_object.current_path.filter(function(local_element){
+	  return local_element.rule_index == (typeof element.target == "object" ? element.target.index : element.target);
+	});
+	main_graph_nodes = mg.nodes.filter(function(local_element){
+	  return local_element.key == match_object_nodes[0].key;
+	});
+	target_key = main_graph_nodes[0].key;
+	target_index = mg.nodes.indexOf(mg.nodes.filter(function(local_element){
+	  return local_element.key == target_key;
+	})[0]);
+	current_link_type = element.label;
+	new_key = source_key + '-' + target_key + '_' + current_link_type;
+	main_graph_link_index = mg.links.indexOf(mg.links.filter(function(local_element){
+	  local_element.key == new_key;
+	})[0]);
+	mg.links.splice(main_graph_link_index,1);
+ 
+      });
+    }
+
+    function replace_delete_nodes(){
+      var lhs_node = null, mg_node = null, mg_node_index = null, indices_to_be_deleted = [], source_index = null, target_index = null;
+      var mg = graphs[match_object.main_graph_index];
+      var lhs = generative_grammar_rules[match_object.rule_index];
+      match_object.current_path.forEach(function(element){
+        lhs_node = lhs.nodes[element.rule_index];
+	mg_node = mg.nodes.filter(function(local_element){return local_element.key == element.key})[0];
+	if(lhs_node.definition.slice(0,5) == 'del::'){
+	  mg_node_index = mg.nodes.indexOf(mg_node);
+          indices_to_be_deleted = [];
+          for(var j=0; j<mg.links.length; j++){  //creating the list of indices of links to be deleted
+	    source_index = (typeof mg.links[j].source == "object" ? mg.links[j].source.index : mg.links[j].source);
+	    target_index = (typeof mg.links[j].target == "object" ? mg.links[j].target.index : mg.links[j].target);
+            if((source_index == mg_node_index) || (target_index == mg_node_index)){
+              indices_to_be_deleted.push(j);
+            }
+          }
+          indices_to_be_deleted.reverse();  //reversing the indices so that the largest index comes first. This is necessary since if we delete the smallest index of links first, then all the remaining links indices will change as well.
+          for(var j=0; j<indices_to_be_deleted.length; j++){
+            mg.links.splice(indices_to_be_deleted[j],1)  //delete one element i.e. at the index j
+          }
+          //then delete the node itself
+	  mg.nodes.splice(mg_node_index,1);
+	}
+      });
+    }
+
+    function replace_lhs_with_rhs(){
+      replace_update_links();
+      replace_update_nodes();
+      replace_add_nodes();
+      replace_add_links();
+      replace_delete_links();
+      replace_delete_nodes();
+      initialize_graph(current_graph, graphs[(match_object.main_graph_index+1)%(graphs.length)]);
+      initialize_graph(current_graph, graphs[match_object.main_graph_index]);
+    }
+
+	function replace_slowly(){
+          match_object.main_graph_index = current_graph.index["Main Graph"];
+          var mg = graphs[match_object.main_graph_index];
+	  var lhs = null;
+          match_object.rule_index = Math.floor(Math.random()*(generative_grammar_rules.length));
+          lhs = generative_grammar_rules[match_object.rule_index];
+
+          //match current graph with random rule
+          match_object.all_possible_paths = match(lhs, mg);
+          match_object.current_path = extract_random_path(match_object.all_possible_paths);
+	  current_graph.restart();
+	  update_rules_names_panel();
+
+          //replace
+	  replace_lhs_with_rhs();
+//          setTimeout(replace_lhs_with_rhs, 3000);
+        }
+
+
+/*************************************** HANDLING THE BUTTONS *****************************************/
+
+    jQuery(document).ready(function(){
+      jQuery("#save_data").click(function(){
+        var graphs_copy = [];  //I will copy only some attributes of nodes and links of each graph. Hence this copy array.
+        for(var i=0; i<graphs.length; i++){
+          graphs_copy[i] = {};
+      	  graphs_copy[i].name = graphs[i].name;
+  	  graphs_copy[i].node_types = graphs[i].node_types;
+  	  graphs_copy[i].link_types = graphs[i].link_types;
+	  graphs_copy[i].nodes = [];
+	  graphs[i].nodes.forEach(function(element){
+	    graphs_copy[i].nodes.push({
+	      key: element.key,
+	      label: element.label,
+	      name: element.name,
+  	      color: element.color,
+	      width: element.width,
+	      height: element.height,
+	      visible_label: element.visible_label
+	    });
+	  });
+	  graphs_copy[i].links = [];
+	  graphs[i].links.forEach(function(element){
+	    if(typeof element.source == "object"){		//if the graph was passed to force.links() function
+	      graphs_copy[i].links.push({
+	        key: element.key,
+	        source: element.source.index,
+	        target: element.target.index,
+		label: element.label,
+		color: element.color,
+		marker_id: element.marker_id,
+		visible_label: element.visible_label
+	      });
+	    }
+	    else graphs_copy[i].links.push(element);
+	  });
+        }
+        graphs_string = JSON.stringify(graphs_copy);
+        var generative_grammar_rules_copy = [];  //I will copy only some attributes of nodes and links of each graph. Hence this copy array.
+        for(var i=0; i<generative_grammar_rules.length; i++){
+          generative_grammar_rules_copy[i] = {};
+	  generative_grammar_rules_copy[i].name = generative_grammar_rules[i].name;
+	  generative_grammar_rules_copy[i].node_types = generative_grammar_rules[i].node_types;
+	  generative_grammar_rules_copy[i].link_types = generative_grammar_rules[i].link_types;
+	  generative_grammar_rules_copy[i].nodes = [];
+	  generative_grammar_rules[i].nodes.forEach(function(element){
+	    generative_grammar_rules_copy[i].nodes.push({
+	      key: element.key,
+	      label: element.label,
+	      name: element.name,
+	      color: element.color,
+	      width: element.width,
+	      height: element.height,
+	      definition: element.definition,
+	      visible_label: element.visible_label
+	    });
+	  });
+	  generative_grammar_rules_copy[i].links = [];
+	  generative_grammar_rules[i].links.forEach(function(element){
+	    if(typeof element.source == "object"){		//if the graph was passed to force.links() function
+	      generative_grammar_rules_copy[i].links.push({
+	        key: element.key,
+	        source: element.source.index,
+	        target: element.target.index,
+		label: element.label,
+		color: element.color,
+		definition: element.definition,
+		marker_id: element.marker_id,
+		visible_label: element.visible_label
+  	      });
+	    }
+	    else generative_grammar_rules_copy[i].links.push(element);
+	  });
+        }
+        generative_grammar_rules_string = JSON.stringify(generative_grammar_rules_copy);
+	var markers_list_string = JSON.stringify(markers_list);
+        jQuery.ajax({
+          type: "POST",
+          url: "../php/73.php",
+          data: {graphs:graphs_string, generative_grammar_rules: generative_grammar_rules_string, markers_list: markers_list_string}
+          }).done( function(msg){
+            alert( "Data Saved: \n" + msg );
+            }).fail( function( xmlHttpRequest, statusText, errorThrown ) {
+              alert(
+                "Your form submission failed.\n\n"
+                + "XML Http Request: " + JSON.stringify( xmlHttpRequest )
+                + ",\nStatus Text: " + statusText
+                + ",\nError Thrown: " + errorThrown );
+              });
+      });
+
+
+//on clicking the button, 'add node type'
+      d3.select("#add_node_type").on("click",function(){
+        var label = prompt("Please specify the name of new type, say, in 1 or 2 letters.","");
+	while(current_graph.node_types.indexOf(label) != -1) label = prompt("A node type with this name already exists. Please enter a different name", "");
+        if(!label) return;
+        current_graph.node_types.push(label);
+	current_node_type = label;
+//	current_node_color = color(current_graph.node_types.length - 1);
+	current_node_color = color(current_node_type.charCodeAt(0));
+        current_graph.update_node_types_panel();
+      });
+
+//on clicking the button, 'add link type'
+      d3.select("#add_link_type").on("click",function(){
+        var label = prompt("Please specify the name of new type, say, in 1 or 2 letters.","");
+	while(current_graph.link_types.indexOf(label) != -1) label = prompt("A link type with this name already exists. Please enter a different name", "");
+        if(!label) return;
+        current_graph.link_types.push(label);
+	current_link_type = label;
+	current_link_color = color(current_graph.link_types.length - 1);
+        current_graph.update_link_types_panel();
+      });
+
+
+//on clicking the button, 'New rule'
+      d3.select("#new_rule").on("click", function(){
+        var rule_name = prompt("Please specify a name for the rule.", "");
+	while(rules_names.indexOf(rule_name) != -1) rule_name = prompt("A rule with this name already exists. Please enter a different name", "");
+	if(!rule_name) return;
+        rules_names.push(rule_name);
+	current_rule_name = rule_name;
+        var index = generative_grammar_rules.length;
+        generative_grammar_rules.push({"name":rule_name, "nodes":[],"links":[], "node_types":[], "link_types":[]});
+	current_graph.index.name = "Rule Graph";
+	current_graph.index[current_graph.index.name] = index;
+	initialize_graph(current_graph, generative_grammar_rules[index]);
+	//current_graph.restart();
+	update_rules_names_panel();
+	current_tab = "Rule Graph";
+	update_tabs_panel();
+	current_graph.update_node_types_panel();
+	current_graph.update_link_types_panel();
+      });
+
+//on clicking the button, 'new_graph'
+      d3.select("#new_graph").on("click", function(){
+        var graph_name = prompt("Please specify a name for the rule.", "");
+	while(graphs_names.indexOf(graph_name) != -1) graph_name = prompt("A graph with this name already exists. Please enter a different name", "");
+	if(!graph_name) return;
+        graphs_names.push(graph_name);
+	current_graph_name = graph_name;
+        var index = graphs.length;
+        graphs.push({"name":graph_name, "nodes":[],"links":[], "node_types":[], "link_types":[]});
+	current_graph.index.name = "Main Graph";
+	current_graph.index[current_graph.index.name] = index;
+	initialize_graph(current_graph, graphs[index]);
+	//current_graph.restart();
+	update_graphs_names_panel();
+	current_tab = "Main Graph";
+	update_tabs_panel();
+	current_graph.update_node_types_panel();
+	current_graph.update_link_types_panel();
+      });
+
+
+//on clicking the button, transform graph
+      d3.select('#transform_graph').on("click", function(){
+        main_graph.transform_graph(current_LHS_graph, current_RHS_graph);
+      });
+
+/*
+//on clicking the button, apply rule
+      d3.select('#apply_rule').on("click", function(){
+        var main_graph_index = current_graph.index["Main Graph"];
+	var rule_index = current_graph.index["Rule Graph"];
+	all_possible_paths = match(generative_grammar_rules[rule_index], graphs[main_graph_index]);
+        console.log(JSON.stringify(all_possible_paths));
+      });
+      */
+
+//on clicking the button, show next match
+      d3.select('#show_next_match').on("click", function(){
+//	if(match_object.main_graph_index != current_graph.index["Main Graph"] || match_object.rule_index != current_graph.index["Rule Graph"]){
+          match_object.main_graph_index = current_graph.index["Main Graph"];
+	  match_object.rule_index = current_graph.index["Rule Graph"];
+	  match_object.all_possible_paths = match(generative_grammar_rules[match_object.rule_index], graphs[match_object.main_graph_index]);
+          console.log(JSON.stringify(match_object.all_possible_paths));
+//	}
+        match_object.current_path = extract_random_path(match_object.all_possible_paths);
+	if(match_object.visited_paths.indexOf(match_object.current_path) == -1) match_object.visited_paths.push(match_object.current_path);
+	current_graph.restart();
+//	console.log(JSON.stringify(match_object.current_path));
+      });
+
+//on clicking the button, 'Replace'
+      d3.select('#replace').on("click", function(){
+	replace_lhs_with_rhs();
+      });
+
+//on clicking the button, 'Start Transformation'
+      d3.select("#start_transformation").on("click", function(){
+         timer = setInterval(function(){replace_slowly()}, 3000);
+      });
+
+      d3.select("#stop_transformation").on("click", function(){
+        clearInterval(timer);
+      });
+      
+    });
+
+</script>
+
+

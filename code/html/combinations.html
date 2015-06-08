@@ -1,0 +1,31 @@
+<html><head><title>Combinations</title></head>
+<body><pre id="result"></pre>
+<script type="text/javascript">
+
+function combination(l, r){
+  if(r==0) return [];
+  else if(l.length == r) return l;
+  else{
+    var large_arr = [];
+    var comb = combination(l.slice(1), r);
+    large_arr = large_arr.concat(comb);
+//    large_arr.push(comb);
+    var comb = combination(l.slice(1), r-1);
+    if(comb.length == 0) {
+    large_arr = large_arr.push([l[0]]);
+    }
+    for(var c=0; c<comb.length; c++){
+     var arr = [l[0]];
+     arr = arr.concat(comb[c]);
+//     large_arr = large_arr.concat(arr);
+    large_arr.push(arr);
+    }
+    return large_arr;
+  }
+}
+ 
+var x = combination([1,2,3,4,5,6], 3);
+//for(var i in x)
+//if(x[i].length == 3)
+console.log(x);
+</script></body></html>

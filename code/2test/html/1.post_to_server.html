@@ -1,0 +1,39 @@
+hello
+<button id="update">Update</button>
+<script type="text/javascript" src="../scripts/jquery.min.js"></script>
+<script type="text/javascript">
+//var count = 0;
+var dataset = {"name": "John", "location": "Boston", "count":0};
+
+$("#update").click(function(){
+$.ajax({
+type: "POST",
+url: "../php/update.php",
+//data: "name=John&location=Boston&count="+count
+data: dataset
+}).done( function(msg){
+	alert( "Data Saved: \n" + msg );
+	}).fail( function( xmlHttpRequest, statusText, errorThrown ) {
+		alert(
+			"Your form submission failed.\n\n"
+			+ "XML Http Request: " + JSON.stringify( xmlHttpRequest )
+			+ ",\nStatus Text: " + statusText
+			+ ",\nError Thrown: " + errorThrown );
+		});
+});
+
+/*
+$(document).ready(function(){
+$("#update").click(function(){
+	$.post("../php/update.php", {value:"hello", count:count}, 
+		function(data, status){
+			alert(data+","+status);
+		
+		});
+		return false;
+	);
+
+});
+});
+*/
+</script>

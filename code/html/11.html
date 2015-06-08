@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<script type="text/javascript" src="d3.v2.js"></script>
+</head>
+
+<body>
+<div id="viz"></div>
+	<script type="text/javascript">
+
+//I am trying to make the text inside the circles visible.
+
+		var sampleSVG = d3.select("#viz")
+				.append("svg")
+				.attr("width", 500)
+				.attr("height", 750)
+				.style("border", "2px black solid");
+
+		var dataset = [5, 10, 15];
+
+		sampleSVG.selectAll("circle")
+			.data(dataset)
+			.enter().append("circle")
+			.style("fill", "black")
+			.attr("r", 20)
+			.attr("cx", function(d,i){return (i+1)*80;})
+			.attr("cy", function(d,i){return (i+1)*80;});
+
+		sampleSVG.selectAll("text")
+			.data(dataset)
+			.enter().append("svg:text")
+			.attr("x", function(d,i){return (i+1)*80;})
+			.attr("y", function(d,i){return (i+1)*80;})
+		//	.attr("x", function(d, i) {console.log(d); console.log(i); return x(d);})
+			.attr("text-anchor", "middle")
+			.text(function(d){return d;})
+			.attr("fill", "white");
+
+
+/*
+		sampleSVG.on("mousedown", function()
+		{
+		d3.select(this).append("circle")
+		.attr("r",0)
+		.style("fill","white")
+		.style("stroke","gray")
+		.attr("cx", 0)
+		.attr("cy", 0)
+		.transition()
+		.delay(100)
+		.duration(1000)
+		.attr("r",40)
+		.attr("cx",Math.random()*100)
+		.attr("cy",Math.random()*100)
+		.text(String)
+		.style("font-size", "12px");
+		})
+
+		*/
+
+/*
+
+*/
+
+
+
+
+	</script>
+</body>
+
+</html>

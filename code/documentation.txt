@@ -1,0 +1,4 @@
+
+Assumptions:
+------------
+- If there are two nodes in LHS, we are mapping them to two different nodes in main graph. In other words, it's an injenctive mapping unlike groove. In groove you need to tell explicitly in the rule if you want two nodes of LHS to map to two different nodes of main graph, by using the "!=" symbol, but here it is implicit. We are not handling non-injenctive mappings here.

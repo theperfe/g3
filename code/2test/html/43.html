@@ -1,0 +1,393 @@
+
+	<!DOCTYPE html>
+	<meta charset="utf-8">
+	<head>
+	<style>
+	.link {
+	  stroke: steelblue;
+	  stroke-width: 3;
+	}
+	.node{
+		stroke: white;
+		stroke-width: 1.5px;
+	}
+	.node_label{
+		stroke:none;
+	}
+	</style>
+	<script type="text/javascript" src="../scripts/d3.js"></script>
+<!--	<script src="http://d3js.org/d3.v3.min.js"></script>-->
+	<script src="../scripts/jquery.min.js"></script>
+	</head>
+	<body>
+		<div id="viz"></div>
+		<div align="center">
+			<button id="save_data"> Save the graph </button>
+			<button id="start_delete_node"> Start deleting </button>
+			<button id="stop_delete_node"> Stop deleting </button>
+		</div>
+		<script type="text/javascript">
+
+	//This is similar to 41.html, but trying to tweak some things. For instance I am checking, why after deleting all the nodes, I am unable to add even two nodes using the mouse clicks on svg canvas.
+
+			var width = 1270;
+			var height = 600;
+			var color = d3.scale.category20();
+//			var g = {};
+
+			var nodes=[], links=[];
+			function graph(){ 	//creating a graph object named g
+				this.delete_bool = false;
+				this.count = 0; //to know whether the mouse click was on the source node or on the target node while creating edges.
+			this.source, this.target; //source and target nodes while creating edges using mouse clicks.
+
+			this.force = d3.layout.force()
+					.size([width,height])
+					.charge(-60)
+					.linkDistance(30);
+
+			this.svg = d3.select("#viz")
+				.append("svg")
+				.attr("width",width)
+				.attr("height", height)
+				.style("border", "2px solid black");
+
+//			console.log(this);
+			this.node = this.svg.selectAll(".node");
+			this.link = this.svg.selectAll(".link");
+//			this.load_data = load_data;
+
+			}
+
+//loading initial graph from json file. This graph can later be modified through the GUI.
+			function extract_data(filename){
+				d3.json(filename, function(error, graph) {
+					console.log(graph);
+			//		var dataset = {};
+					nodes = graph.nodes;
+					links = graph.links;
+			//		return dataset;
+				});
+			//	return dataset;
+			}
+
+			function load_data(){
+					this.nodes = nodes;
+					this.links = links;
+					this.force.nodes(this.nodes)
+					.links(this.links)
+					.start()	//this should never be removed
+					.on("tick", this.tick);
+					
+					console.log(this);
+
+					this.svg.on("click", this.add_node);
+
+					this.nodes = this.force.nodes(),
+					this.links = this.force.links();
+//					this.restart();
+			}
+
+
+
+/*************************************** FUNCTIONS ****************************************
+* key
+* add_node
+* delete_node
+* add_link
+* tick
+* node_click
+* update
+* enter
+* exit
+*/
+
+//key function			
+			key = function(datum) {
+				return datum.key;
+			}
+
+//add node
+//add a node by clicking anywhere on the svg canvas. While adding the key to the node, find the max. key existing till then, and add the next no. as the key to the incoming node.
+			add_node = function() {
+				d3.event.stopPropagation();
+				var point = d3.mouse(this);
+				var new_key = d3.max(nodes, function(datum){return datum.key}) + 1; //find the max. key and add 1 to it
+				if(!new_key) new_key = 0;
+				var node_item = {key:new_key,x:point[0],y:point[1],label:"e",group:Math.round(Math.random()*10)};
+				this.nodes.push(node_item);
+				this.restart();
+			}
+
+//delete node
+			delete_node = function (d,i){
+				d3.event.stopPropagation();
+				var indices_to_be_deleted = [];
+				console.log("index of node to be deleted is " + i);
+				for(var j=0; j<this.links.length; j++){	//creating the list of indices of links to be deleted
+					if((this.links[j].source.index === i) || (this.links[j].target.index === i)){
+						indices_to_be_deleted.push(j);
+					}
+				}
+				console.log(indices_to_be_deleted);
+				indices_to_be_deleted.reverse();	//reversing the indices so that the largest index comes first. This is necessary since if we delete the smallest index of links first, then all the remaining links indices will change as well.
+
+				for(var j=0; j<indices_to_be_deleted.length; j++){
+					this.links.splice(indices_to_be_deleted[j],1)	//delete one element i.e. at the index j
+				}
+
+				//then delete the node itself
+				this.nodes.splice(i,1);	//delete one node i.e. at the index i.
+				this.restart();
+
+			}
+
+//add link
+//add a link by clicking on the source node and the target node
+			add_link = function (d,i){
+				console.log("entered add link");
+				d3.event.stopPropagation();
+				if(count == 1)	{ //clicked on target 
+					this.target = i;
+					this.target_key = this.nodes[i].key;
+					if (this.source !== this.target){
+						var new_key = source_key + "-" + target_key; //the link key is depending on its source key and target key
+						console.log(new_key);
+						this.links.push({key:new_key, "source":source, "target":target});
+						this.count = 0;
+						this.restart();
+				}
+			}
+					else if (count == 0){	//clicked on source
+						this.source = i;
+						this.source_key = this.nodes[i].key;
+						this.count = 1;
+					}
+			}
+
+
+//tick
+				
+			tick = function () {
+				console.log(this);
+				this.link.attr("x1", function(d) { return d.source.x; })
+				    .attr("y1", function(d) { return d.source.y; })
+				    .attr("x2", function(d) { return d.target.x; })
+				    .attr("y2", function(d) { return d.target.y; });
+
+				this.node.attr("transform", function(datum){return "translate("+datum.x+","+datum.y+")"});
+			}
+
+//node click
+			node_click = function (d,i){
+				if (this.delete_bool === true) this.delete_node(d,i);
+				else this.add_link(d,i);
+				this.restart();
+			}
+
+/****** update *********/
+			update = function (){
+				this.update_links();
+				this.update_nodes();
+			}
+
+//update_links
+			update_links = function (){
+				this.link = this.link.data(this.links, this.key);
+			}
+
+//update_nodes
+			update_nodes = function (){
+				this.node = this.node.data(this.nodes, this.key);
+				this.update_shapes();
+				this.update_labels();
+				this.update_titles();
+			}
+
+//update_shapes
+			update_shapes = function (){
+				var node_shapes = this.svg.selectAll("g .node_shape");
+				node_shapes
+				.attr("r", function(datum){
+						if(datum.label === "e") return 5;
+						else return 9;
+					})
+				.attr("fill", function(d){ return color(d.group);})
+				.on("click", this.node_click);
+			}
+
+//update_labels
+			update_labels = function (){
+				var node_labels = this.svg.selectAll("g .node_label");
+				node_labels
+				.text(function(datum){return datum.label;});
+			}
+
+//update_titles
+			update_titles = function (){
+				var node_titles = this.svg.selectAll("g .node_title");
+				node_titles
+				.text(function(d,i) {return i});
+			}
+
+				
+/****** enter *********/
+			enter = function (){
+				this.enter_links();
+				this.enter_nodes();
+			}
+
+//enter_links
+			enter_links = function (){
+				this.link.enter().insert("line",".node")
+				.attr("class", "link");
+			}
+
+//enter_nodes
+			enter_nodes = function (){
+				var gnode = this.node.enter().append("g")
+					.attr("class", "node");
+
+				gnode_circles = gnode.append("circle")
+				.attr("class", "node_shape")
+				.attr("r", function(datum){
+						if(datum.label === "e") return 5;
+						else return 9;
+					})
+				.attr("fill", function(d){ return color(d.group);})
+				.on("click", this.node_click)
+				.call(this.force.drag);
+
+				gnode.append("text")
+				.attr("class", "node_label")
+				.attr("fill", "white")
+				.attr("text-anchor", "middle")
+				.attr("font-family", "calibri")
+				.attr("font-size", 13)
+				.attr("font-weight", "bold")
+				.attr("y", 3.5)
+				.style("pointer-events", "none") //to allow the mouse event to be passed to the circle below it.
+				.text(function(datum){return datum.label;});
+
+				gnode.append("title")
+				.attr("class", "node_title")
+				.text(function(d,i) {return i});
+			}
+				
+
+/****** exit *********/
+			exit = function (){
+				this.exit_links();
+				this.exit_nodes();
+			}
+
+//exit_links
+			exit_links = function (){
+				this.link.exit().remove();
+			}
+
+//exit_nodes
+			exit_nodes = function (){
+				this.node.exit().remove();
+			}
+				
+/****** restart *********/
+			restart = function ()
+			{
+				this.update();
+				this.enter();
+				this.exit();
+				this.force.start();
+			}
+
+			var g = {
+				graph: graph, 
+				load_data: load_data,
+				restart: restart,
+				update: update,
+				update_links: update_links,
+				update_nodes: update_nodes,
+				update_shapes: update_shapes,
+				update_labels: update_labels,
+				update_titles: update_titles,
+				enter: enter,
+				enter_links: enter_links,
+				enter_nodes: enter_nodes,
+				exit: exit,
+				exit_links: exit_links,
+				exit_nodes: exit_nodes,
+				key: key,
+				add_node: add_node,
+				delete_node: delete_node,
+				add_link: add_link,
+				tick: tick,
+				node_click: node_click
+				};
+
+			g.graph();
+			extract_data("../json/43.json");
+			g.load_data();
+			g.restart();
+
+
+
+/*************************************** HANDLING THE BUTTONS *****************************************/
+
+			$(document).ready(function(){
+				$("#save_data").click(function(){
+				nodes_copy = [];	//I will copy only some attributes of nodes into this.
+				links_copy = [];
+				for (var i=0; i<nodes.length; i++)
+				{
+					nodes_copy[i] = {};
+					nodes_copy[i].key = nodes[i].key;
+					nodes_copy[i].label = nodes[i].label;
+					nodes_copy[i].name = nodes[i].name;
+					nodes_copy[i].group = nodes[i].group;
+				}
+				
+				for(var i=0; i<links.length; i++)
+				{
+
+					links_copy[i] = {};
+					links_copy[i].key = links[i].key;
+					links_copy[i].source = links[i].source.index;
+					links_copy[i].target = links[i].target.index;
+				}
+			
+
+					nodes_string = JSON.stringify(nodes_copy);					
+					links_string = JSON.stringify(links_copy);
+					console.log(nodes_string);
+					console.log(links_string);
+					
+					$.ajax({
+						type: "POST",
+						url: "../php/43.php",
+						//data: "name=John&location=Boston&count="+count
+						data: {nodes:nodes_string, links: links_string}
+						}).done( function(msg){
+							alert( "Data Saved: \n" + msg );
+							}).fail( function( xmlHttpRequest, statusText, errorThrown ) {
+								alert(
+									"Your form submission failed.\n\n"
+									+ "XML Http Request: " + JSON.stringify( xmlHttpRequest )
+									+ ",\nStatus Text: " + statusText
+									+ ",\nError Thrown: " + errorThrown );
+								});
+				});
+
+				$("#start_delete_node").click(function(){delete_bool = true;
+				console.log(delete_bool);
+				d3.select("body").append("text")
+				.attr("class","delete_text")
+				.text("Click on any node to delete it.");});
+				$("#stop_delete_node").click(function(){delete_bool = false;
+				console.log(delete_bool);
+				d3.select(".delete_text").remove();});
+
+			});
+
+	</script>
+
+

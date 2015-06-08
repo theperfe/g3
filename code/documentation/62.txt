@@ -1,0 +1,36 @@
+
+*************************************** DEFINITIONS *****************************************
+- Node definitions and link definitions are designed along the lines of groove.
+- In groove, sometimes definitions span multiple lines which can be more than two.
+- But in g3, I restricted it to two lines, and I consider the lines to be separated by a semicolon (';'). So when a user wants to specify a two-line definition, he/she needs to separate both the lines using semicolon instead of using ctrl-enter as the way it is done in groove.
+- So the label cannot have a semicolon in it.
+- In groove, there are three types of nodes/edges - creators, erasers and embargoes. 
+- The creators are the nodes/edges which are not in LHS, but get added in RHS. They are represented in green.
+- The erasers are those nodes/edges which are present in LHS, but not in RHS. They are represented in blue.
+- The embargoes are NAC conditions. They are represented in red. 
+- I am also following the same color coding.
+- Also in groove, apart from the definition spanning multiple lines, the definition can be corresponding to the node/edge as a whole, or to the label of the node/edge. This also, groove distinguishes by spanning its definition in multiple lines. I have differentiated both these kind of definitions using a pair of colons ('::') as opposed to a single colon (':'). The first one, I use when the definition is corresponding to the entire node/edge while the second one, I use when the definition is corresponding to the label of node/edge.
+
+Some examples:
+- To add a new node/edge of label 'K', you need to type the following definition:
+new::type:K
+- But if you want to give a new label 'K' to an existing node/edge (assuming it does not already have a label, or its old label is being deleted), you need to give the following definition:
+new:type:K
+- If you want to both delete an old label, 'S', and add a new label 'K', to an existing node, then the definition is:
+del:type:S
+new:type:K
+- If you want to delete a node/edge of label 'E' altogether:
+del::type:E
+- If you want to specify an NAC node/edge of label 'P':
+not::type:P
+- If you want to specify only the label of an existing node, not the entire node as part of an NAC:
+not:type:P
+
+
+- One of the main assumptions which I made here which is different from groove is that a node/edge can have only one label at a time whereas groove allows multiple labels. 
+- This has many consequences in the sense that 'new:' and 'del:' cannot be more than one in a single node since you can add only one label and no more (hence only one 'new:').
+- And when there is only one label, you can delete only that label (hence only one 'del:'). But 'not:' can be many since though only one label is present, many labels are absent in a single node. Hence 'not:' can be many.
+- Now coming to the combinations of each of these - the node-level definitions i.e. 'new::', 'not::', 'del::' cannot be combined with each other. They have to be given individually. 
+- But the label-level definitions i.e. "new:", "not:", "del:" can be combined with each other. Each of them can be given individually or with combination of the other two or with the combination of one among the other two, and none of them needs to be given at all also. So a node can have an empty label, or one label. 
+- But 'not:' can have multiple things given at the same time since. So instead of having many 'not:'s, we will have multiple labels in the same 'not:' using regular expressions like '?'.
+

@@ -1,0 +1,174 @@
+
+*************************************** DEFINITIONS *****************************************
+- Node definitions and link definitions are designed along the lines of groove.
+- In groove, sometimes definitions span multiple lines which can be more than two.
+- But in g3, I restricted it to two lines, and I consider the lines to be separated by a semicolon (';'). So when a user wants to specify a two-line definition, he/she needs to separate both the lines using semicolon instead of using ctrl-enter as the way it is done in groove.
+- So the label cannot have a semicolon in it.
+- In groove, there are three types of nodes/edges - creators, erasers and embargoes. 
+- The creators are the nodes/edges which are not in LHS, but get added in RHS. They are represented in green.
+- The erasers are those nodes/edges which are present in LHS, but not in RHS. They are represented in blue.
+- The embargoes are NAC conditions. They are represented in red. 
+- I am also following the same color coding.
+- Also in groove, apart from the definition spanning multiple lines, the definition can be corresponding to the node/edge as a whole, or to the label of the node/edge. This also, groove distinguishes by spanning its definition in multiple lines. I have differentiated both these kind of definitions using a pair of colons ('::') as opposed to a single colon (':'). The first one, I use when the definition is corresponding to the entire node/edge while the second one, I use when the definition is corresponding to the label of node/edge.
+
+Some examples:
+- To add a new node/edge of label 'K', you need to type the following definition:
+new::type:K
+- But if you want to give a new label 'K' to an existing node/edge (assuming it does not already have a label, or its old label is being deleted), you need to give the following definition:
+new:type:K
+- If you want to both delete an old label, 'S', and add a new label 'K', to an existing node, then the definition is:
+del:type:S
+new:type:K
+- If you want to delete a node/edge of label 'E' altogether:
+del::type:E
+- If you want to specify an NAC node/edge of label 'P':
+not::type:P
+- If you want to specify only the label of an existing node, not the entire node as part of an NAC:
+not:type:P
+
+
+- One of the main assumptions which I made here which is different from groove is that a node/edge can have only one label at a time whereas groove allows multiple labels. 
+- This has many consequences in the sense that 'new:' and 'del:' cannot be more than one in a single node since you can add only one label and no more (hence only one 'new:').
+- And when there is only one label, you can delete only that label (hence only one 'del:'). But 'not:' can be many since though only one label is present, many labels are absent in a single node. Hence 'not:' can be many.
+- Now coming to the combinations of each of these - the node-level definitions i.e. 'new::', 'not::', 'del::' cannot be combined with each other. They have to be given individually. 
+- But the label-level definitions i.e. "new:", "not:", "del:" can be combined with each other. Each of them can be given individually or with combination of the other two or with the combination of one among the other two, and none of them needs to be given at all also. So a node can have an empty label, or one label. 
+- But 'not:' can have multiple things given at the same time since. So instead of having many 'not:'s, we will have multiple labels in the same 'not:' using regular expressions like '?'.
+
+Link types:
+------------
+- I dont know why groove allows anonymous node types but does not allow anonymous link types. 
+- I am ignoring that aspect of groove and allowing for anonymous link types as well.
+- Also, in groove, you need not use the 'type:' prefix before an edge label though it's compulsory before a node label. It's probably because they wanted to distinguish this prefix from other possible prefixes of nodes like 'flag:' etc. which an edge doesnt have.
+- I am making this 'type:' prefix compulsory for edge label also for uniformity.
+- Also, in groove, there is no possibility of changing/deleting labels i.e. all the prefixes are at the edge-level and none at the label-level. But I am violating that aspect of groove by adding prefixes at both levels the way I did for nodes because I see no reason why I should not do that, and in fact I can think of some examples where this feature might be necessary to me.
+
+====================================
+
+08th Apr, 2013 - Mon (18:45:37)
+Thinking about the path extraction algorithm.
+I think to do this, I first need to make a map between the LHS nodes and main graph nodes.
+I can do it in two ways - by storing the LHS nodes keys as an attribute in the main graph nodes, or storing the LHS indexes instead of their keys. I think the second option is better because there will be no gaps in indices whereas there can be gaps among key numberings. So I will go with that.
+So modifying my graph matching algorithm to map the main graph nodes to LHS nodes via their indices. Adding a new attribute called 'rule_index' in the main graph node (I mean the copy of it which I push into the path tree) and giving it the value of the LHS node's index to which it is mapped.
+done :)
+Now thinking of the path extraction algorithm.
+I think instead of building an intermediate tree from the current tree which I got from my graph matching algorithm as output, I will directly generate an array of all possible paths as output i.e. I will directly generate an array of sets of nodes where each set of nodes indicates the portion of main graph which is a possible match for the LHS!
+For this again I need to write a recursive algorithm. I dont know its complexity. But I think I will need to do it only for the first time I try to match a rule with the graph since from the next time, I will just append to or delete from this list of paths instead of generating all of them again since only a portion of graph will be modified after the application of a rule and I just need to modify that particular portion.
+This last point is extremely important if I want to go ahead with extracting all these paths like this. If I extract all of them every time a change is done to a small portion of graph, then it will be disastrous. Then it's better to always extract just some random path instead of generating all possible paths and store them. I believe I will be able to scale the possible paths list as and when required and hence going ahead with this algorithm of extracting all possible paths from the tree which I got as an output from my graph matching algorithm.
+08th Apr, 2013 - Mon (19:30:31)
+
+08th Apr, 2013 - Mon (22:00:11)
+Just now I decided that I will go with the function which extracts a random path instead of extracting all the possible paths since I will never use all of them. Even when I do graph transformation, even if all the possible paths are available to me, I will any way use only one random path from among them. But to do that, why I need to spend so much energy in generating all of them and storing them when I can do the same thing without that. So writing a function for extracting a random path.
+08th Apr, 2013 - Mon (23:30:36)
+
+=====================================
+
+09th Apr, 2013 - Tue (20:15:17)
+Just now found a small defect in my code. I found that I am not really joining the predecessors and successors of an entity. Right now, they are still separate. 
+Instead of modifying the extract_random_path_from_element algorithm, I will match my sub_match algorithm itself to suit the former algorithm. This will be much easier than the other way round.
+All I will need to do is when I merge the result1 and result2, I will need not again merge the node types of the outcome.
+Also changing the code in 68.html so that the links in main graph are highlighted only the corresponding links are there in the LHS of the rule.
+09th Apr, 2013 - Tue (21:00:20)
+
+=====================================
+
+13th Apr, 2013 - Sat (14:00:15) 
+Now thinking of how to apply the rules once the matching is done. 
+Till now I am able to match the LHS with the main graph (not considering NACs). Now I need to consider NAC-included matching and then replace them with RHS.
+The idea of the algorithm is as follows:
+- If there are some nodes in LHS (at a given step of the algorithm) which are NACs, then we should subtract those nodes and then check for matching nodes in mg, and then continue with our old algorithm.
+- If there are no NAC nodes in LHS at all, then nmpsl.len > nlpls.len is allowed (for that corresponding node type).
+- But if there is at least one NAC node of a given node type, then the no. of nlpsl nodes and no. of nmpsl nodes have to be exactly same (for that node type).
+- I am assuming that NAC nodes are always leaf nodes. They are never in between the graph.
+- So they will never come in lvp (lhs visited path).
+- With this, I think handling NAC nodes of type 'not::' is done.
+- The next task is to handle anonymous nodes and nodes of 'not:type:' type.
+- I thought that the best way would be to assign labels (of mg node types, not lhs node types) to all these anonymous and 'not:type:' type of nodes using permutations with repetitions. This will create one more level in the output tree - the level of different possible matches.
+
+======================================
+
+27th Nov, 2013 - Wed (16:30:19)
+I want to implement the option of multiple NACs in my code. It's an extremely important option. 
+Also I need to change the code such that it checks all the levels of nodes in each NAC instead of stopping at one level only.
+One idea is to have separate panel for lhs, RHS and NACs. But then since the no. of NACs are indefinite, we need to add a separate panel for each NAC which makes the code more complex. Instead I will make NACs a separate graph itself. Then the question is why not make the RHS also a separate graph. But that is not necessary since the lhs and RHS are only one always. You have only one LHS to match which can be replaced by only one RHS. But NACs are indefinite. That's why we should separate them.
+So if we have multiple NACs as multiple graphs, how do we make sure a given NAC is related to a particular rule.
+The best way of doing it is to have NACs as a list in the rule object itself.
+Then there are two ways of displaying it:
+- NACs list in a separate panel (Then either display all the NACs of all the rules without bothering to make the code complex or display only the NACs of the particular rule selected; I think the second option is better even if the code is a bit complex)
+- NACs in the same panel as the rules but slightly intended. This is a more difficult and also not a visually good-looking option. Then we need to take many decisions like should we show the list of NACs always visible or only when the rule is clicked upon. If it is the second case, then it's equivalent to adding a separate NACs list panel and editing that only.
+So final decision is to have a separate NAC list panel, but link it to the rules list panel such that whenever a rule name is clicked, its corresponding NACs will be shown.
+No. Didnt do that. Found that it will need some considerable changes in the code which is not urgent or worth doing right now. I will do it later if necessary. Right now it's not much of a problem if all the NACs of all the rules are shown at once. I need to focus on some more important things now than to just worry about how to display the NACs.
+In this case, the only way to link NACs with the rules is to make sure that the NAC name will have the corresponding generative rule name embedded in it. 
+For instance all NACs of "left_inherence" named generative rule will have names like "left_inherence_NAC1", "left_inherence_NAC2" etc.
+27th Nov, 2013 - Wed (17:30:09)
+
+27th Nov, 2013 - Wed (17:30:09)
+Directly jumping to the problem of handling multiple NACs.
+Didnt finish it.
+27th Nov, 2013 - Wed (18:00:19)
+
+=======================================
+
+17th Dec, 2013 - Tue (16:00:45)
+Thinking of the mathematical basis for my graph matching algorithm.
+- Initially I thought it's just a mapping between LHS, which is a set of nodes, and main graph, which is another set of nodes.
+- Then it came to my mind that there are many such mappings.
+- For a moment I thought it's a relation instead of a function i.e. one element in main graph is mapping to many elements of LHS and vice-versa.
+- But then that's not true since for a given LHS node, there is always one main graph node which it maps to, and this cannot be made out with the relation, it can be done only with a function.
+- So it's not a relational mapping that I have, but a group of mappings.
+- Another thought which I got is whether to take out portions of main graph which map to LHS and make each of them a different set. Then we will have exactly one mapping - in fact a bijective mapping between each new set and LHS.
+- But that is like too much repitition of data which is unnecessary. When we have a one-to-one mapping between each new set and LHS, why not show that in the initial sets itself by way of difference among mappings instead of difference among sets.
+- So the simplest thing to do is to consider all the matches between LHS and main graph as a set of mappings.
+- So I thought it would be sufficient if I just store these mappings which are nothing but ordered pairs of nodes - one from each graph - LHS and main graph. And I only need to store the keys of my nodes, no other data. I can always get back the entire node data if I just have its key. (This aspect I should look into).
+- Then I went back to how I implemented my code. It seemed very different and I understood why.
+- If we stored each mapping separately, we would need to repeat lot of data again since in each mapping, the domain (LHS) is same, and many times the ranges (portions of main graph) also overlap a lot.
+- So in my code I stored data in an incremental fashion - I sort of mixed many mappings if they have overlapping range. 
+- In this process I realized that each mapping is not a simple mapping from a set of nodes to another set of nodes as I thought in the beginning, but it's a complex mapping from one object (graph) to another object (graph) as we do in category theory.
+- If we take the second stand, then we need to store two functions - one from nodes of LHS to nodes of main graph, and another from edges of LHS to edges of main graph in such a way that the composition is preserved. Actually these two functions are considered to be one mapping that I spoke so far. We need to consider multiple such mappings and store them in a way that data is not replicated.
+made excellent progress.
+17th Dec, 2013 - Tue (18:00:46)
+
+======================================
+
+26th Dec, 2013 - Thu (12:15:15)
+Today I continued thinking of my graph matching algorithm in terms of category theory and succeeded :) 
+- The usual category of graphs, say graph1 category, represents a graph as a set of edges and a set of nodes and source and target functions from the former to the latter.
+- But my graph matching algorithm uses a different idea of graphs, say graph2 category. It treats a graph as a set of nodes and a superset of this nodes set, and predecessor and successor functions from the former to the latter. N -> {N} (where the arrow can be a predecessor function or a successor function).
+- So I need to think of some functor or something like that which maps the objects in the former category to the objects in the latter category and I found it :) 
+
+N -> {N} (here the function on the arrow is element of)
+^     ^
+|src  |pred
+E ->  N (here the function is t or target)
+
+This mapping can be a functor iff pred o target = element_of o source
+One can imagine a similar mapping for the successors as well.
+
+- Now the question is how to do composition of the predecessor, successor functions of the graph2 category. We know that the predecessor of a given node is a set of nodes. Now what are the predecessors of each node in this set of nodes - is it a single set or is it a set of sets. Found that it has to be a set of sets and can't be a single set since in the latter case the structure of the graph is diluted and the matching of two different graphs on this basis will lead to problems. Hence we need to consider each node of the set of nodes, and then find its predecessors (successors) using the object. We don't need additional functions or arrows for that. We just need to do it with hand - by looking at the list of nodes in the set and going to the corresponding individual node objects in the graph2 category which is exactly what I did in my code :) 
+26th Dec, 2013 - Thu (14:00:00)
+
+26th Dec, 2013 - Thu (21:30:39)
+- Thinking of how to handle the edges now.
+- Found that there is no problem with handling the edges at all once the graph matching is done, and while applying RHS on the graph. I am already able to add links, delete links, and also rename links independently and along with nodes.
+- So there is nothing to fear about edges handling as I feared earlier.
+- The only problem is while matching the graphs themselves where edges become a problem, and that too only when (only) edges are NACs. This is the case which I did not handle earlier, which I need to resolve now, which I remembered just now.
+26th Dec, 2013 - Thu (22:30:59)
+
+=======================================
+
+// Graph Matching Algorithm:
+- The algorithm matches the graphs (LHS and main graph) in a recursive way.
+- It starts with an arbitrary node in LHS and an arbitrary node in main graph and checks if their predecessors as well as successors match with each other.
+- If both match, then it continues to do the same with each of the predecessor and successor nodes as well and continues this process until all the nodes in the LHS are covered.
+- A graph can be represented in two ways:
+1) As a set of nodes and edges
+2) As a starting node and a succession of predecessors and successors of this node.
+
+=======================================
+
+15th Jun, 2014 - Sun (19:45:55)
+Just now got an excellent realization about my code:
+- I am considering only isomorphic subgraphs i.e. LHS will be matched with some subgraph of G only if it's isomorphic to it, not just homomorphic! Because of this condition, I need not check whether two numerically different nodes are identical or not. They necessarily need to be different in terms of existence as well since the matching is isomorphic.
+- But in Groove, they have considered non-isomorphic matching as well because of which they need to explicitly specify in case two nodes have to be necessarily different. If they dont specify that, then they are dealing with the cases where two nodes map to two nodes as well as to one node. 
+- I am not handling non-isomorphic graphs because I dont see any necessity for it either now or in future also.
+
+
